@@ -138,7 +138,7 @@ export default function MapComponent({
           <p style="margin: 5px 0;"><b>Status:</b> <span style="color: ${markerColor};">${camera.status}</span></p>
           <p style="margin: 5px 0;"><b>Coordinates:</b> ${camera.latitude.toFixed(4)}, ${camera.longitude.toFixed(4)}</p>
           <a href="${camera.page_url}" target="_blank" style="color: #3498db; text-decoration: none;">🔗 View Camera Page</a>
-          ${camera.image_url && camera.image_url !== 'N/A' ? `<br><img src="${camera.image_url}" width="200" style="border-radius: 5px; margin-top: 10px;" onerror="this.style.display='none'">` : ''}
+          ${camera.image_url && camera.image_url !== 'N/A' ? `<br><img src="/api/camera-proxy?url=${encodeURIComponent(camera.image_url)}" width="200" style="border-radius: 5px; margin-top: 10px;" onerror="this.style.display='none'">` : ''}
         </div>
       `
 

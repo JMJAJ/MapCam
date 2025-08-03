@@ -417,13 +417,12 @@ export default function CameraMonitoringDashboard() {
                           <CardContent className="p-4">
                             <div className="aspect-video mb-4 bg-muted rounded-lg overflow-hidden">
                               <img
-                                src={camera.image_url || "/placeholder.svg"}
+                                src={camera.image_url && camera.image_url !== 'N/A' ? `/api/camera-proxy?url=${encodeURIComponent(camera.image_url)}` : "/placeholder.svg"}
                                 alt={`Camera in ${camera.city}`}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
                                   const target = e.target as HTMLImageElement
-                                  target.style.display = "none"
-                                  target.nextElementSibling?.classList.remove("hidden")
+                                  target.src = "/placeholder.jpg"
                                 }}
                               />
                               <div className="hidden w-full h-full flex items-center justify-center bg-muted">
@@ -486,13 +485,12 @@ export default function CameraMonitoringDashboard() {
                             <div className="flex items-center gap-4">
                               <div className="w-24 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0">
                                 <img
-                                  src={camera.image_url || "/placeholder.svg"}
+                                  src={camera.image_url && camera.image_url !== 'N/A' ? `/api/camera-proxy?url=${encodeURIComponent(camera.image_url)}` : "/placeholder.svg"}
                                   alt={`Camera in ${camera.city}`}
                                   className="w-full h-full object-cover"
                                   onError={(e) => {
                                     const target = e.target as HTMLImageElement
-                                    target.style.display = "none"
-                                    target.nextElementSibling?.classList.remove("hidden")
+                                    target.src = "/placeholder.jpg"
                                   }}
                                 />
                                 <div className="hidden w-full h-full flex items-center justify-center bg-muted">
