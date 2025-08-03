@@ -6,10 +6,9 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "CamMonitor Pro - Global Camera Network Dashboard",
+  title: "MapCam",
   description:
-    "Professional camera monitoring dashboard with real-time status tracking, interactive maps, and comprehensive analytics.",
-    generator: 'v0.dev'
+    "just another bs I made"
 }
 
 export default function RootLayout({
