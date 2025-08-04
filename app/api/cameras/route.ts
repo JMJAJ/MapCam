@@ -7,7 +7,7 @@ export async function GET() {
     const filePath = path.join(process.cwd(), 'camera_data.json')
     const fileContents = fs.readFileSync(filePath, 'utf8')
     const cameras = JSON.parse(fileContents)
-    
+
     // Transform the data to match the expected format
     const transformedCameras = cameras.map((camera: any, index: number) => ({
       id: index + 1,
@@ -23,7 +23,7 @@ export async function GET() {
       response_time: Math.floor(Math.random() * 300) + 50,
       last_check: new Date().toISOString(),
     }))
-    
+
     return NextResponse.json(transformedCameras)
   } catch (error) {
     console.error('Error reading camera data:', error)
