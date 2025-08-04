@@ -34,6 +34,12 @@ import {
   Wifi,
   WifiOff,
   HelpCircle,
+  Heart,
+  HeartOff,
+  X,
+  Copy,
+  Filter,
+  Star,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
@@ -47,6 +53,21 @@ const MapComponent = dynamic(() => import("./components/map-component"), {
     <div className="h-[600px] bg-muted animate-pulse rounded-lg flex items-center justify-center">Loading Map...</div>
   ),
 })
+
+// Cookie utilities
+const getCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') return null
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null
+  return null
+}
+
+const setCookie = (name: string, value: string, days: number = 30) => {
+  if (typeof document === 'undefined') return
+  const expires = new Date(Date.now() + days * 864e5).toUTCString()
+  document.cookie = `${name}=${value}; expires=${expires}; path=/`
+}
 
 export default function CameraMonitoringDashboard() {
   const [cameras, setCameras] = useState<any[]>([])
@@ -63,6 +84,68 @@ export default function CameraMonitoringDashboard() {
   const [mapLayer, setMapLayer] = useState("street")
   const [showClustering, setShowClustering] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(false)
+  const [favorites, setFavorites] = useState<Set<number>>(new Set())
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+  const [searchBy, setSearchBy] = useState("location") // location, manufacturer, id
+  const [cookiesLoaded, setCookiesLoaded] = useState(false)
+
+  // Load preferences from cookies on mount
+  useEffect(() => {
+    const savedFavorites = getCookie('camera-favorites')
+    const savedViewMode = getCookie('camera-viewmode')
+    const savedDarkMode = getCookie('camera-darkmode')
+    const savedMapLayer = getCookie('camera-maplayer')
+
+    console.log('Loading from cookies:', { savedFavorites, savedViewMode, savedDarkMode, savedMapLayer })
+
+    if (savedFavorites && savedFavorites !== 'undefined' && savedFavorites !== '[]') {
+      try {
+        const favIds = JSON.parse(savedFavorites)
+        if (Array.isArray(favIds) && favIds.length > 0) {
+          console.log('Setting favorites from cookie:', favIds)
+          setFavorites(new Set(favIds))
+        }
+      } catch (e) {
+        console.warn('Failed to parse favorites from cookie:', e)
+      }
+    }
+
+    if (savedViewMode && (savedViewMode === 'grid' || savedViewMode === 'list')) {
+      setViewMode(savedViewMode as "grid" | "list")
+    }
+
+    if (savedDarkMode) {
+      setDarkMode(savedDarkMode === 'true')
+    }
+
+    if (savedMapLayer) {
+      setMapLayer(savedMapLayer)
+    }
+
+    // Mark cookies as loaded to prevent overwriting
+    setCookiesLoaded(true)
+  }, [])
+
+  // Save preferences to cookies when they change (but only after cookies are loaded)
+  useEffect(() => {
+    if (cookiesLoaded) {
+      const favoritesArray = [...favorites]
+      console.log('Saving favorites to cookie:', favoritesArray)
+      setCookie('camera-favorites', JSON.stringify(favoritesArray))
+    }
+  }, [favorites, cookiesLoaded])
+
+  useEffect(() => {
+    setCookie('camera-viewmode', viewMode)
+  }, [viewMode])
+
+  useEffect(() => {
+    setCookie('camera-darkmode', darkMode.toString())
+  }, [darkMode])
+
+  useEffect(() => {
+    setCookie('camera-maplayer', mapLayer)
+  }, [mapLayer])
 
   // Fetch camera data on component mount
   useEffect(() => {
@@ -89,9 +172,14 @@ export default function CameraMonitoringDashboard() {
   const countries = [...new Set(cameras.map((c) => c.country))].sort()
   const manufacturers = [...new Set(cameras.map((c) => c.manufacturer))].sort()
 
-  // Filter cameras
+  // Enhanced filtering with favorites and search options
   useEffect(() => {
     let filtered = cameras
+
+    // Apply favorites filter first
+    if (showFavoritesOnly) {
+      filtered = filtered.filter((c) => favorites.has(c.id))
+    }
 
     if (selectedCountry !== "all") {
       filtered = filtered.filter((c) => c.country === selectedCountry)
@@ -102,17 +190,60 @@ export default function CameraMonitoringDashboard() {
     }
 
     if (searchTerm) {
-      filtered = filtered.filter(
-        (c) =>
-          c.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.country.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          c.region.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter((c) => {
+        switch (searchBy) {
+          case "location":
+            return c.city.toLowerCase().includes(term) ||
+              c.country.toLowerCase().includes(term) ||
+              c.region.toLowerCase().includes(term)
+          case "manufacturer":
+            return c.manufacturer.toLowerCase().includes(term)
+          case "id":
+            return c.id.toString().includes(term)
+          default:
+            return c.city.toLowerCase().includes(term) ||
+              c.country.toLowerCase().includes(term) ||
+              c.region.toLowerCase().includes(term)
+        }
+      })
     }
 
     setFilteredCameras(filtered)
+  }, [selectedCountry, selectedManufacturer, searchTerm, searchBy, cameras, favorites, showFavoritesOnly])
+
+  // Reset page only when actual filters change (not when individual favorites are toggled)
+  useEffect(() => {
     setCurrentPage(1)
-  }, [selectedCountry, selectedManufacturer, searchTerm, cameras])
+  }, [selectedCountry, selectedManufacturer, searchTerm, searchBy, showFavoritesOnly])
+
+  // Favorites functions
+  const toggleFavorite = (cameraId: number) => {
+    setFavorites(prev => {
+      const newFavorites = new Set(prev)
+      if (newFavorites.has(cameraId)) {
+        newFavorites.delete(cameraId)
+      } else {
+        newFavorites.add(cameraId)
+      }
+      return newFavorites
+    })
+  }
+
+  const clearAllFilters = () => {
+    setSelectedCountry("all")
+    setSelectedManufacturer("all")
+    setSearchTerm("")
+    setShowFavoritesOnly(false)
+  }
+
+  const copyCoordinates = (camera: any) => {
+    const coords = `${camera.latitude.toFixed(6)}, ${camera.longitude.toFixed(6)}`
+    navigator.clipboard.writeText(coords).then(() => {
+      // You could add a toast notification here
+      console.log('Coordinates copied:', coords)
+    })
+  }
 
   // Pagination
   const totalPages = Math.ceil(filteredCameras.length / itemsPerPage)
@@ -335,42 +466,86 @@ export default function CameraMonitoringDashboard() {
                   <CardDescription>Browse and filter cameras from around the world</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Filters */}
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <Input
-                        placeholder="Search by city, country, or region..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full"
-                      />
+                  {/* Enhanced Filters */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1 relative">
+                        <div className="flex gap-2">
+                          <div className="flex-1 relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder={`Search by ${searchBy}...`}
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="pl-10"
+                            />
+                          </div>
+                          <Select value={searchBy} onValueChange={setSearchBy}>
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="location">Location</SelectItem>
+                              <SelectItem value="manufacturer">Brand</SelectItem>
+                              <SelectItem value="id">ID</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                        <SelectTrigger className="w-full md:w-48">
+                          <SelectValue placeholder="Select Country" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Countries</SelectItem>
+                          {countries.map((country) => (
+                            <SelectItem key={country} value={country}>
+                              {country}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
+                        <SelectTrigger className="w-full md:w-48">
+                          <SelectValue placeholder="Select Manufacturer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Manufacturers</SelectItem>
+                          {manufacturers.map((manufacturer) => (
+                            <SelectItem key={manufacturer} value={manufacturer}>
+                              {manufacturer}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                      <SelectTrigger className="w-full md:w-48">
-                        <SelectValue placeholder="Select Country" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Countries</SelectItem>
-                        {countries.map((country) => (
-                          <SelectItem key={country} value={country}>
-                            {country}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
-                      <SelectTrigger className="w-full md:w-48">
-                        <SelectValue placeholder="Select Manufacturer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Manufacturers</SelectItem>
-                        {manufacturers.map((manufacturer) => (
-                          <SelectItem key={manufacturer} value={manufacturer}>
-                            {manufacturer}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+
+                    {/* Filter Controls */}
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="favorites-only"
+                          checked={showFavoritesOnly}
+                          onCheckedChange={setShowFavoritesOnly}
+                        />
+                        <Label htmlFor="favorites-only" className="flex items-center gap-1">
+                          <Heart className="h-4 w-4" />
+                          Favorites Only ({favorites.size})
+                        </Label>
+                      </div>
+
+                      {(selectedCountry !== "all" || selectedManufacturer !== "all" || searchTerm || showFavoritesOnly) && (
+                        <Button variant="outline" size="sm" onClick={clearAllFilters}>
+                          <X className="h-4 w-4 mr-1" />
+                          Clear Filters
+                        </Button>
+                      )}
+
+                      <Button variant="outline" size="sm" onClick={exportJSON}>
+                        <Download className="h-4 w-4 mr-1" />
+                        Export Filtered ({filteredCameras.length})
+                      </Button>
+                    </div>
                   </div>
 
                   {/* View Toggle */}
@@ -432,7 +607,7 @@ export default function CameraMonitoringDashboard() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="flex-1 bg-transparent"
+                                  className="flex-1"
                                   onClick={() => handleCameraView(camera)}
                                 >
                                   <Eye className="h-4 w-4 mr-1" />
@@ -441,11 +616,29 @@ export default function CameraMonitoringDashboard() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="flex-1 bg-transparent"
                                   onClick={() => handleCameraSelect(camera.id)}
                                 >
-                                  <MapPin className="h-4 w-4 mr-1" />
-                                  Map
+                                  <MapPin className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => copyCoordinates(camera)}
+                                  title="Copy coordinates"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={favorites.has(camera.id) ? "default" : "outline"}
+                                  onClick={() => toggleFavorite(camera.id)}
+                                  title={favorites.has(camera.id) ? "Remove from favorites" : "Add to favorites"}
+                                >
+                                  {favorites.has(camera.id) ? (
+                                    <Heart className="h-4 w-4 fill-current" />
+                                  ) : (
+                                    <Heart className="h-4 w-4" />
+                                  )}
                                 </Button>
                               </div>
                             </div>
@@ -498,8 +691,27 @@ export default function CameraMonitoringDashboard() {
                                   View
                                 </Button>
                                 <Button size="sm" variant="outline" onClick={() => handleCameraSelect(camera.id)}>
-                                  <MapPin className="h-4 w-4 mr-1" />
-                                  Map
+                                  <MapPin className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => copyCoordinates(camera)}
+                                  title="Copy coordinates"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={favorites.has(camera.id) ? "default" : "outline"}
+                                  onClick={() => toggleFavorite(camera.id)}
+                                  title={favorites.has(camera.id) ? "Remove from favorites" : "Add to favorites"}
+                                >
+                                  {favorites.has(camera.id) ? (
+                                    <Heart className="h-4 w-4 fill-current" />
+                                  ) : (
+                                    <Heart className="h-4 w-4" />
+                                  )}
                                 </Button>
                               </div>
                             </div>
