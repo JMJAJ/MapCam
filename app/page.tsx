@@ -772,6 +772,7 @@ export default function CameraMonitoringDashboard() {
                           <SelectItem value="street">Street</SelectItem>
                           <SelectItem value="satellite">Satellite</SelectItem>
                           <SelectItem value="dark">Dark</SelectItem>
+                          <SelectItem value="earth">Google Earth</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

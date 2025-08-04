@@ -80,6 +80,10 @@ export default function MapComponent({
         tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         attribution = '© OpenStreetMap contributors, © CARTO'
         break
+      case 'earth':
+        tileLayerUrl = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+        attribution = '© Google Earth'
+        break
       case 'street':
       default:
         tileLayerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
