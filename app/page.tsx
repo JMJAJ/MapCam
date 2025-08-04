@@ -58,15 +58,11 @@ export default function CameraMonitoringDashboard() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(9)
-  const [isMonitoring, setIsMonitoring] = useState(false)
-  const [monitoringInterval, setMonitoringInterval] = useState("60")
   const [darkMode, setDarkMode] = useState(true)
   const [selectedCamera, setSelectedCamera] = useState<number | null>(null)
   const [mapLayer, setMapLayer] = useState("street")
   const [showClustering, setShowClustering] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(false)
-
-  const monitoringIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fetch camera data on component mount
   useEffect(() => {
@@ -151,29 +147,7 @@ export default function CameraMonitoringDashboard() {
     { name: "Unknown", value: stats.unknownCameras, color: "#95a5a6" },
   ]
 
-  // Monitoring functions
-  const startMonitoring = () => {
-    setIsMonitoring(true)
-    const interval = Number.parseInt(monitoringInterval) * 1000
 
-    monitoringIntervalRef.current = setInterval(() => {
-      setCameras((prev) =>
-        prev.map((camera) => ({
-          ...camera,
-          status: Math.random() > 0.8 ? "offline" : Math.random() > 0.1 ? "online" : "unknown",
-          response_time: Math.floor(Math.random() * 300) + 50,
-          last_check: new Date().toISOString(),
-        })),
-      )
-    }, interval)
-  }
-
-  const stopMonitoring = () => {
-    setIsMonitoring(false)
-    if (monitoringIntervalRef.current) {
-      clearInterval(monitoringIntervalRef.current)
-    }
-  }
 
   // Export functions
   const exportJSON = () => {
@@ -344,11 +318,10 @@ export default function CameraMonitoringDashboard() {
         {/* Main Content */}
         <div className="container mx-auto px-4 py-8">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="explorer">Camera Explorer</TabsTrigger>
               <TabsTrigger value="map">Interactive Map</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
-              <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
             </TabsList>
 
             {/* Camera Explorer */}
@@ -741,16 +714,16 @@ export default function CameraMonitoringDashboard() {
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span>HTTP Connections</span>
-                        <span className="font-semibold">{Math.floor(stats.totalCameras * 0.6)}</span>
+                        <span>Total Countries</span>
+                        <span className="font-semibold">{stats.countries}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>MJPEG Streams</span>
-                        <span className="font-semibold">{Math.floor(stats.totalCameras * 0.3)}</span>
+                        <span>Total Cities</span>
+                        <span className="font-semibold">{stats.cities}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Snapshots</span>
-                        <span className="font-semibold">{Math.floor(stats.totalCameras * 0.1)}</span>
+                        <span>Manufacturers</span>
+                        <span className="font-semibold">{stats.manufacturers}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -758,146 +731,7 @@ export default function CameraMonitoringDashboard() {
               </div>
             </TabsContent>
 
-            {/* Monitoring */}
-            <TabsContent value="monitoring" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Activity className="h-5 w-5" />
-                        Real-time Monitoring
-                      </CardTitle>
-                      <CardDescription>Monitor camera status and performance in real-time</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      {/* Monitoring Controls */}
-                      <div className="flex flex-wrap items-center gap-4 p-4 bg-muted rounded-lg">
-                        <div className="flex items-center gap-2">
-                          {isMonitoring ? (
-                            <Button onClick={stopMonitoring} variant="destructive" size="sm">
-                              <Pause className="h-4 w-4 mr-2" />
-                              Stop Monitoring
-                            </Button>
-                          ) : (
-                            <Button onClick={startMonitoring} size="sm">
-                              <Play className="h-4 w-4 mr-2" />
-                              Start Monitoring
-                            </Button>
-                          )}
-                        </div>
 
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          <Select value={monitoringInterval} onValueChange={setMonitoringInterval}>
-                            <SelectTrigger className="w-24">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="30">30s</SelectItem>
-                              <SelectItem value="60">1m</SelectItem>
-                              <SelectItem value="300">5m</SelectItem>
-                              <SelectItem value="600">10m</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {isMonitoring && (
-                          <Badge variant="default" className="animate-pulse">
-                            <Activity className="h-3 w-3 mr-1" />
-                            Monitoring Active
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Status Overview */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
-                          <CardContent className="p-4 text-center">
-                            <Wifi className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                            <div className="text-2xl font-bold text-green-600">{stats.onlineCameras}</div>
-                            <div className="text-sm text-green-700 dark:text-green-300">Online Cameras</div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800">
-                          <CardContent className="p-4 text-center">
-                            <WifiOff className="h-8 w-8 mx-auto mb-2 text-red-600" />
-                            <div className="text-2xl font-bold text-red-600">{stats.offlineCameras}</div>
-                            <div className="text-sm text-red-700 dark:text-red-300">Offline Cameras</div>
-                          </CardContent>
-                        </Card>
-
-                        <Card className="border-gray-200 bg-gray-50 dark:bg-gray-950 dark:border-gray-800">
-                          <CardContent className="p-4 text-center">
-                            <HelpCircle className="h-8 w-8 mx-auto mb-2 text-gray-600" />
-                            <div className="text-2xl font-bold text-gray-600">{stats.unknownCameras}</div>
-                            <div className="text-sm text-gray-700 dark:text-gray-300">Unknown Status</div>
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                      {/* Monitoring Results Table */}
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Monitoring Results</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead>
-                                <tr className="border-b">
-                                  <th className="text-left p-2">Status</th>
-                                  <th className="text-left p-2">Location</th>
-                                  <th className="text-left p-2">Manufacturer</th>
-                                  <th className="text-left p-2">Response Time</th>
-                                  <th className="text-left p-2">Last Check</th>
-                                  <th className="text-left p-2">Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {cameras.map((camera) => (
-                                  <tr key={camera.id} className="border-b">
-                                    <td className="p-2">
-                                      <Badge
-                                        variant={
-                                          camera.status === "online"
-                                            ? "default"
-                                            : camera.status === "offline"
-                                              ? "destructive"
-                                              : "secondary"
-                                        }
-                                      >
-                                        {camera.status}
-                                      </Badge>
-                                    </td>
-                                    <td className="p-2">
-                                      {camera.city}, {camera.country}
-                                    </td>
-                                    <td className="p-2">{camera.manufacturer}</td>
-                                    <td className="p-2">
-                                      {camera.status === "online" ? `${camera.response_time}ms` : "-"}
-                                    </td>
-                                    <td className="p-2">{new Date(camera.last_check).toLocaleTimeString()}</td>
-                                    <td className="p-2">
-                                      <Button size="sm" variant="outline">
-                                        <Settings className="h-3 w-3" />
-                                      </Button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </CardContent>
-                  </Card>
-                </div>
-
-
-              </div>
-            </TabsContent>
           </Tabs>
         </div>
       </div>

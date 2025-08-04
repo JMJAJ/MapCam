@@ -57,15 +57,7 @@ export default function MapComponent({
 
     // Initialize map
     if (!mapRef.current) {
-      mapRef.current = L.map(mapContainerRef.current, {
-        center: [20, 0],
-        zoom: 2,
-        maxBounds: [[-85, -200], [85, 200]], // More flexible bounds with padding
-        maxBoundsViscosity: 0.2, // Allow smooth movement with gentle bounce back
-        worldCopyJump: false, // Disable world copy jumping
-        zoomControl: true,
-        attributionControl: true
-      })
+      mapRef.current = L.map(mapContainerRef.current).setView([20, 0], 2)
     }
 
     // Clear existing tile layers
