@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useMemo, useCallback, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import 'leaflet.markercluster'
 import 'leaflet.heat'
+import { Maximize, Minimize } from 'lucide-react'
 
 // Fix for default markers in Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -152,10 +153,12 @@ export default function MapComponent({
 }: MapComponentProps) {
   const mapRef = useRef<L.Map | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null)
   const markersRef = useRef<L.LayerGroup | null>(null)
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null)
   const heatLayerRef = useRef<L.HeatLayer | null>(null)
   const nightLayerRef = useRef<L.LayerGroup | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Memoize popup content creation to avoid recreating on every render
   const createPopupContent = useCallback((camera: Camera) => {
@@ -188,8 +191,10 @@ export default function MapComponent({
     if (!mapRef.current) {
       mapRef.current = L.map(mapContainerRef.current, {
         worldCopyJump: true, // Enable seamless world wrapping
-        maxBounds: [[-90, -Infinity], [90, Infinity]], // Allow infinite horizontal scrolling
-        maxBoundsViscosity: 0.0 // No resistance when panning beyond bounds
+        maxBounds: [[-95, -Infinity], [95, Infinity]], // Allow full latitude range for polar cameras
+        maxBoundsViscosity: 0.5, // Resistance when trying to pan beyond vertical bounds
+        minZoom: 1, // Prevent zooming out too far
+        maxZoom: 18 // Set reasonable max zoom
       }).setView([20, 0], 2)
     }
 
@@ -342,5 +347,79 @@ export default function MapComponent({
     }
   }, [cameras, selectedCamera, mapLayer, showClustering, showHeatmap, showDayNight])
 
-  return <div ref={mapContainerRef} className="w-full h-full" />
+  // Fullscreen functionality
+  const toggleFullscreen = useCallback(() => {
+    if (!fullscreenContainerRef.current) return
+
+    if (!isFullscreen) {
+      // Enter fullscreen
+      if (fullscreenContainerRef.current.requestFullscreen) {
+        fullscreenContainerRef.current.requestFullscreen()
+      } else if ((fullscreenContainerRef.current as any).webkitRequestFullscreen) {
+        (fullscreenContainerRef.current as any).webkitRequestFullscreen()
+      } else if ((fullscreenContainerRef.current as any).msRequestFullscreen) {
+        (fullscreenContainerRef.current as any).msRequestFullscreen()
+      }
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen()
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen()
+      }
+    }
+  }, [isFullscreen])
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).msFullscreenElement
+      )
+      setIsFullscreen(isCurrentlyFullscreen)
+
+      // Invalidate map size when entering/exiting fullscreen
+      if (mapRef.current) {
+        setTimeout(() => {
+          mapRef.current?.invalidateSize()
+        }, 100)
+      }
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    document.addEventListener('msfullscreenchange', handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange)
+    }
+  }, [])
+
+  return (
+    <div
+      ref={fullscreenContainerRef}
+      className={`relative w-full h-full ${isFullscreen ? 'bg-black' : ''}`}
+    >
+      <div ref={mapContainerRef} className="w-full h-full" />
+
+      {/* Fullscreen Toggle Button */}
+      <button
+        onClick={toggleFullscreen}
+        className="absolute top-4 right-4 z-[1000] bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 p-2 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 transition-colors duration-200"
+        title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+      >
+        {isFullscreen ? (
+          <Minimize className="h-4 w-4" />
+        ) : (
+          <Maximize className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  )
 }
