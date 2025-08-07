@@ -84,6 +84,7 @@ export default function CameraMonitoringDashboard() {
   const [mapLayer, setMapLayer] = useState("street")
   const [showClustering, setShowClustering] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(false)
+  const [showDayNight, setShowDayNight] = useState(false)
   const [favorites, setFavorites] = useState<Set<number>>(new Set())
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [searchBy, setSearchBy] = useState("location") // location, manufacturer, id
@@ -787,6 +788,14 @@ export default function CameraMonitoringDashboard() {
                       <Label htmlFor="heatmap">Heatmap</Label>
                     </div>
 
+                    <div className="flex items-center space-x-2">
+                      <Switch id="daynight" checked={showDayNight} onCheckedChange={setShowDayNight} />
+                      <Label htmlFor="daynight" className="flex items-center gap-1">
+                        <Moon className="h-4 w-4" />
+                        Day/Night
+                      </Label>
+                    </div>
+
                     <div className="relative z-50">
                       <Select value={selectedCountry} onValueChange={setSelectedCountry}>
                         <SelectTrigger className="w-40">
@@ -817,6 +826,7 @@ export default function CameraMonitoringDashboard() {
                       mapLayer={mapLayer}
                       showClustering={showClustering}
                       showHeatmap={showHeatmap}
+                      showDayNight={showDayNight}
                     />
                   </div>
 

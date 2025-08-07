@@ -37,6 +37,83 @@ interface MapComponentProps {
   mapLayer?: string
   showClustering?: boolean
   showHeatmap?: boolean
+  showDayNight?: boolean
+}
+
+// Solar terminator calculation functions
+const getSolarDeclination = (dayOfYear: number): number => {
+  return 23.45 * Math.sin((360 * (284 + dayOfYear) / 365) * Math.PI / 180)
+}
+
+const getHourAngle = (longitude: number, utcHours: number): number => {
+  return 15 * (utcHours - 12) + longitude
+}
+
+
+
+const createNightPolygons = (): L.Polygon[] => {
+  const now = new Date()
+  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
+  const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60
+  const declination = getSolarDeclination(dayOfYear)
+
+  const polygons: L.Polygon[] = []
+  const terminatorPoints: L.LatLng[] = []
+
+  // Calculate terminator line points
+  for (let lng = -180; lng <= 180; lng += 1) {
+    const hourAngle = getHourAngle(lng, utcHours)
+
+    // Calculate latitude where sun is at horizon
+    const latRad = Math.atan(-Math.cos(hourAngle * Math.PI / 180) / Math.tan(declination * Math.PI / 180))
+    let lat = latRad * 180 / Math.PI
+
+    // Handle polar day/night
+    if (isNaN(lat)) {
+      lat = declination > 0 ? -90 : 90
+    }
+
+    // Clamp latitude to valid range
+    lat = Math.max(-90, Math.min(90, lat))
+    terminatorPoints.push(L.latLng(lat, lng))
+  }
+
+  // Create multiple polygons for infinite wrapping
+  for (let offset = -2; offset <= 2; offset++) {
+    const offsetPoints = terminatorPoints.map(point =>
+      L.latLng(point.lat, point.lng + (offset * 360))
+    )
+
+    // Create night polygon
+    const nightPoints: L.LatLng[] = []
+
+    // Add terminator line
+    nightPoints.push(...offsetPoints)
+
+    // Complete the polygon by adding polar regions
+    const baseOffset = offset * 360
+    if (declination > 0) {
+      // Northern summer - add south pole
+      nightPoints.push(L.latLng(-90, 180 + baseOffset))
+      nightPoints.push(L.latLng(-90, -180 + baseOffset))
+    } else {
+      // Northern winter - add north pole  
+      nightPoints.push(L.latLng(90, 180 + baseOffset))
+      nightPoints.push(L.latLng(90, -180 + baseOffset))
+    }
+
+    const polygon = L.polygon(nightPoints, {
+      color: 'transparent',
+      fillColor: '#000033',
+      fillOpacity: 0.4,
+      weight: 0,
+      interactive: false
+    })
+
+    polygons.push(polygon)
+  }
+
+  return polygons
 }
 
 export default function MapComponent({
@@ -44,13 +121,15 @@ export default function MapComponent({
   selectedCamera,
   mapLayer = 'street',
   showClustering = true,
-  showHeatmap = false
+  showHeatmap = false,
+  showDayNight = false
 }: MapComponentProps) {
   const mapRef = useRef<L.Map | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const markersRef = useRef<L.LayerGroup | null>(null)
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null)
   const heatLayerRef = useRef<L.HeatLayer | null>(null)
+  const nightLayerRef = useRef<L.LayerGroup | null>(null)
 
   useEffect(() => {
     if (!mapContainerRef.current) return
@@ -105,6 +184,10 @@ export default function MapComponent({
     if (heatLayerRef.current) {
       mapRef.current.removeLayer(heatLayerRef.current)
       heatLayerRef.current = null
+    }
+    if (nightLayerRef.current) {
+      mapRef.current.removeLayer(nightLayerRef.current)
+      nightLayerRef.current = null
     }
 
     // Create markers array
@@ -195,6 +278,17 @@ export default function MapComponent({
       mapRef.current.addLayer(heatLayerRef.current!)
     }
 
+    // Add day/night overlay if enabled
+    if (showDayNight) {
+      try {
+        const nightPolygons = createNightPolygons()
+        nightLayerRef.current = L.layerGroup(nightPolygons)
+        mapRef.current.addLayer(nightLayerRef.current!)
+      } catch (error) {
+        console.warn('Failed to create day/night overlay:', error)
+      }
+    }
+
     // Fit map to show all cameras
     if (cameras.length > 0 && !selectedCamera) {
       const group = L.featureGroup(markers)
@@ -210,7 +304,7 @@ export default function MapComponent({
         mapRef.current = null
       }
     }
-  }, [cameras, selectedCamera, mapLayer, showClustering, showHeatmap])
+  }, [cameras, selectedCamera, mapLayer, showClustering, showHeatmap, showDayNight])
 
   return <div ref={mapContainerRef} className="w-full h-full" />
 }
