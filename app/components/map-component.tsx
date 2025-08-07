@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
@@ -40,6 +40,9 @@ interface MapComponentProps {
   showDayNight?: boolean
 }
 
+// Cache for icons to avoid recreating them
+const iconCache = new Map<string, L.DivIcon>()
+
 // Solar terminator calculation functions
 const getSolarDeclination = (dayOfYear: number): number => {
   return 23.45 * Math.sin((360 * (284 + dayOfYear) / 365) * Math.PI / 180)
@@ -49,8 +52,7 @@ const getHourAngle = (longitude: number, utcHours: number): number => {
   return 15 * (utcHours - 12) + longitude
 }
 
-
-
+// Efficient night polygons with manual wrapping
 const createNightPolygons = (): L.Polygon[] => {
   const now = new Date()
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
@@ -60,8 +62,8 @@ const createNightPolygons = (): L.Polygon[] => {
   const polygons: L.Polygon[] = []
   const terminatorPoints: L.LatLng[] = []
 
-  // Calculate terminator line points
-  for (let lng = -180; lng <= 180; lng += 1) {
+  // Calculate terminator line points (every 5 degrees for better performance)
+  for (let lng = -180; lng <= 180; lng += 5) {
     const hourAngle = getHourAngle(lng, utcHours)
 
     // Calculate latitude where sun is at horizon
@@ -78,17 +80,14 @@ const createNightPolygons = (): L.Polygon[] => {
     terminatorPoints.push(L.latLng(lat, lng))
   }
 
-  // Create multiple polygons for infinite wrapping
-  for (let offset = -2; offset <= 2; offset++) {
+  // Create 3 copies of the night polygon for seamless wrapping (-360°, 0°, +360°)
+  for (let offset = -1; offset <= 1; offset++) {
     const offsetPoints = terminatorPoints.map(point =>
       L.latLng(point.lat, point.lng + (offset * 360))
     )
 
     // Create night polygon
-    const nightPoints: L.LatLng[] = []
-
-    // Add terminator line
-    nightPoints.push(...offsetPoints)
+    const nightPoints: L.LatLng[] = [...offsetPoints]
 
     // Complete the polygon by adding polar regions
     const baseOffset = offset * 360
@@ -116,6 +115,33 @@ const createNightPolygons = (): L.Polygon[] => {
   return polygons
 }
 
+// Create cached icon function
+const getCachedIcon = (status: string): L.DivIcon => {
+  if (iconCache.has(status)) {
+    return iconCache.get(status)!
+  }
+
+  const markerColor = status === 'online' ? 'green' :
+    status === 'offline' ? 'red' : 'gray'
+
+  const icon = L.divIcon({
+    className: 'custom-camera-marker',
+    html: `<div style="
+      width: 12px; 
+      height: 12px; 
+      background-color: ${markerColor}; 
+      border: 1px solid white; 
+      border-radius: 50%; 
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    "></div>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6]
+  })
+
+  iconCache.set(status, icon)
+  return icon
+}
+
 export default function MapComponent({
   cameras,
   selectedCamera,
@@ -131,12 +157,40 @@ export default function MapComponent({
   const heatLayerRef = useRef<L.HeatLayer | null>(null)
   const nightLayerRef = useRef<L.LayerGroup | null>(null)
 
+  // Memoize popup content creation to avoid recreating on every render
+  const createPopupContent = useCallback((camera: Camera) => {
+    const markerColor = camera.status === 'online' ? 'green' :
+      camera.status === 'offline' ? 'red' : 'gray'
+
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 200px;">
+        <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 14px;">${camera.city}</h4>
+        <p style="margin: 3px 0; font-size: 12px;"><b>Country:</b> ${camera.country}</p>
+        <p style="margin: 3px 0; font-size: 12px;"><b>Status:</b> <span style="color: ${markerColor};">${camera.status}</span></p>
+        <p style="margin: 3px 0; font-size: 11px;">${camera.latitude.toFixed(4)}, ${camera.longitude.toFixed(4)}</p>
+        <a href="${camera.page_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">🔗 View Camera</a>
+      </div>
+    `
+  }, [])
+
+  // Memoize heat points to avoid recalculation
+  const heatPoints = useMemo(() => {
+    return cameras.map(camera => {
+      const intensity = camera.status === 'online' ? 1 : camera.status === 'offline' ? 0.5 : 0.3
+      return [camera.latitude, camera.longitude, intensity] as [number, number, number]
+    })
+  }, [cameras])
+
   useEffect(() => {
     if (!mapContainerRef.current) return
 
-    // Initialize map
+    // Initialize map with world wrapping enabled
     if (!mapRef.current) {
-      mapRef.current = L.map(mapContainerRef.current).setView([20, 0], 2)
+      mapRef.current = L.map(mapContainerRef.current, {
+        worldCopyJump: true, // Enable seamless world wrapping
+        maxBounds: [[-90, -Infinity], [90, Infinity]], // Allow infinite horizontal scrolling
+        maxBoundsViscosity: 0.0 // No resistance when panning beyond bounds
+      }).setView([20, 0], 2)
     }
 
     // Clear existing tile layers
@@ -190,52 +244,30 @@ export default function MapComponent({
       nightLayerRef.current = null
     }
 
-    // Create markers array with infinite wrapping
+    // Create markers array with efficient infinite wrapping
     const markers: L.Marker[] = []
-    const heatPoints: [number, number, number][] = []
 
     cameras.forEach((camera) => {
-      const markerColor = camera.status === 'online' ? 'green' :
-        camera.status === 'offline' ? 'red' : 'gray'
+      const icon = getCachedIcon(camera.status)
+      const popupContent = createPopupContent(camera)
 
-      // Create custom icon based on status
-      const icon = L.divIcon({
-        className: 'custom-camera-marker',
-        html: `<div style="
-          width: 16px; 
-          height: 16px; 
-          background-color: ${markerColor}; 
-          border: 2px solid white; 
-          border-radius: 50%; 
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        "></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
-      })
-
-      // Create popup content
-      const popupContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 250px;">
-          <h4 style="margin: 0 0 10px 0; color: #2c3e50;">${camera.city}</h4>
-          <p style="margin: 5px 0;"><b>Country:</b> ${camera.country}</p>
-          <p style="margin: 5px 0;"><b>Region:</b> ${camera.region}</p>
-          <p style="margin: 5px 0;"><b>Manufacturer:</b> ${camera.manufacturer}</p>
-          <p style="margin: 5px 0;"><b>Status:</b> <span style="color: ${markerColor};">${camera.status}</span></p>
-          <p style="margin: 5px 0;"><b>Coordinates:</b> ${camera.latitude.toFixed(4)}, ${camera.longitude.toFixed(4)}</p>
-          <a href="${camera.page_url}" target="_blank" style="color: #3498db; text-decoration: none;">🔗 View Camera Page</a>
-          ${camera.image_url && camera.image_url !== 'N/A' ? `<br><img src="/api/camera-proxy?url=${encodeURIComponent(camera.image_url)}" width="200" style="border-radius: 5px; margin-top: 10px;" onerror="this.style.display='none'">` : ''}
-        </div>
-      `
-
-      // Create multiple markers for infinite wrapping (offsets: -2, -1, 0, +1, +2)
-      for (let offset = -2; offset <= 2; offset++) {
+      // Create 3 copies of each marker for seamless infinite scrolling (-360°, 0°, +360°)
+      for (let offset = -1; offset <= 1; offset++) {
         const offsetLng = camera.longitude + (offset * 360)
         const marker = L.marker([camera.latitude, offsetLng], { icon })
-        marker.bindPopup(popupContent)
+
+        // Lazy popup binding - only bind when needed
+        marker.on('click', () => {
+          if (!marker.getPopup()) {
+            marker.bindPopup(popupContent)
+          }
+        })
+
         markers.push(marker)
 
         // Highlight selected camera (all copies)
         if (selectedCamera === camera.id) {
+          marker.bindPopup(popupContent)
           marker.openPopup()
           // Only set view for the original camera (offset 0)
           if (offset === 0) {
@@ -243,37 +275,35 @@ export default function MapComponent({
           }
         }
       }
-
-      // Add to heatmap data (only original position to avoid duplicates)
-      const intensity = camera.status === 'online' ? 1 : camera.status === 'offline' ? 0.5 : 0.3
-      heatPoints.push([camera.latitude, camera.longitude, intensity])
     })
 
-    // Add markers based on clustering preference
-    if (showClustering && cameras.length > 100) {
-      // Use clustering for large datasets
+    // Add markers based on clustering preference (optimized thresholds)
+    if (showClustering && cameras.length > 50) { // Lower threshold for clustering
+      // Use clustering for medium+ datasets with optimized settings
       clusterGroupRef.current = (L as any).markerClusterGroup({
         chunkedLoading: true,
-        maxClusterRadius: 50,
-        spiderfyOnMaxZoom: true,
+        maxClusterRadius: 40, // Smaller radius for better performance
+        spiderfyOnMaxZoom: false, // Disable spiderfy for performance
         showCoverageOnHover: false,
-        zoomToBoundsOnClick: true
+        zoomToBoundsOnClick: true,
+        disableClusteringAtZoom: 12, // Disable clustering at high zoom for performance
+        animate: false // Disable animations for better performance
       })
 
       markers.forEach(marker => clusterGroupRef.current!.addLayer(marker))
       mapRef.current.addLayer(clusterGroupRef.current!)
     } else {
-      // Use regular layer group
+      // Use regular layer group for small datasets
       markersRef.current = L.layerGroup(markers)
       mapRef.current.addLayer(markersRef.current)
     }
 
-    // Add heatmap if enabled
+    // Add heatmap if enabled (using memoized heat points)
     if (showHeatmap && heatPoints.length > 0) {
       heatLayerRef.current = (L as any).heatLayer(heatPoints, {
-        radius: 25,
-        blur: 15,
-        maxZoom: 17,
+        radius: 20, // Reduced radius for better performance
+        blur: 10,   // Reduced blur for better performance
+        maxZoom: 15, // Lower max zoom to reduce calculations
         gradient: {
           0.0: 'blue',
           0.5: 'lime',
@@ -284,7 +314,7 @@ export default function MapComponent({
       mapRef.current.addLayer(heatLayerRef.current!)
     }
 
-    // Add day/night overlay if enabled
+    // Add day/night overlay if enabled (3 polygons for seamless wrapping)
     if (showDayNight) {
       try {
         const nightPolygons = createNightPolygons()
