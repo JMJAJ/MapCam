@@ -190,7 +190,7 @@ export default function MapComponent({
       nightLayerRef.current = null
     }
 
-    // Create markers array
+    // Create markers array with infinite wrapping
     const markers: L.Marker[] = []
     const heatPoints: [number, number, number][] = []
 
@@ -213,8 +213,6 @@ export default function MapComponent({
         iconAnchor: [8, 8]
       })
 
-      const marker = L.marker([camera.latitude, camera.longitude], { icon })
-
       // Create popup content
       const popupContent = `
         <div style="font-family: Arial, sans-serif; max-width: 250px;">
@@ -229,18 +227,26 @@ export default function MapComponent({
         </div>
       `
 
-      marker.bindPopup(popupContent)
-      markers.push(marker)
+      // Create multiple markers for infinite wrapping (offsets: -2, -1, 0, +1, +2)
+      for (let offset = -2; offset <= 2; offset++) {
+        const offsetLng = camera.longitude + (offset * 360)
+        const marker = L.marker([camera.latitude, offsetLng], { icon })
+        marker.bindPopup(popupContent)
+        markers.push(marker)
 
-      // Add to heatmap data (with intensity based on status)
+        // Highlight selected camera (all copies)
+        if (selectedCamera === camera.id) {
+          marker.openPopup()
+          // Only set view for the original camera (offset 0)
+          if (offset === 0) {
+            mapRef.current?.setView([camera.latitude, camera.longitude], 10)
+          }
+        }
+      }
+
+      // Add to heatmap data (only original position to avoid duplicates)
       const intensity = camera.status === 'online' ? 1 : camera.status === 'offline' ? 0.5 : 0.3
       heatPoints.push([camera.latitude, camera.longitude, intensity])
-
-      // Highlight selected camera
-      if (selectedCamera === camera.id) {
-        marker.openPopup()
-        mapRef.current?.setView([camera.latitude, camera.longitude], 10)
-      }
     })
 
     // Add markers based on clustering preference
