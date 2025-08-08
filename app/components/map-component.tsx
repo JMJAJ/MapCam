@@ -261,11 +261,12 @@ export default function MapComponent({
         const offsetLng = camera.longitude + (offset * 360)
         const marker = L.marker([camera.latitude, offsetLng], { icon })
 
-        // Lazy popup binding - only bind when needed
+        // Bind popup and open on single click
         marker.on('click', () => {
           if (!marker.getPopup()) {
             marker.bindPopup(popupContent)
           }
+          marker.openPopup()
         })
 
         markers.push(marker)
