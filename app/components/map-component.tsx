@@ -19,12 +19,12 @@ L.Icon.Default.mergeOptions({
 
 interface Camera {
   id: number
-  latitude: number
-  longitude: number
+  latitude: number | null
+  longitude: number | null
   country: string
   city: string
   region: string
-  manufacturer: string
+  manufacturer: string | null
   image_url: string
   page_url: string
   status: string
@@ -165,23 +165,40 @@ export default function MapComponent({
     const markerColor = camera.status === 'online' ? 'green' :
       camera.status === 'offline' ? 'red' : 'gray'
 
+    // Handle null coordinates
+    const coordinates = camera.latitude !== null && camera.longitude !== null
+      ? `${camera.latitude.toFixed(4)}, ${camera.longitude.toFixed(4)}`
+      : 'Coordinates unavailable'
+
     return `
-      <div style="font-family: Arial, sans-serif; max-width: 200px;">
+      <div style="font-family: Arial, sans-serif; max-width: 250px;">
         <h4 style="margin: 0 0 8px 0; color: #2c3e50; font-size: 14px;">${camera.city}</h4>
+        <div style="margin: 8px 0;">
+          <img src="${camera.image_url}" 
+               alt="Camera view" 
+               style="width: 100%; max-width: 240px; height: auto; border-radius: 4px; cursor: pointer;"
+               onclick="window.open('${camera.page_url}', '_blank')"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+          <div style="display: none; padding: 20px; background: #f5f5f5; border-radius: 4px; text-align: center; color: #666;">
+            Image unavailable
+          </div>
+        </div>
         <p style="margin: 3px 0; font-size: 12px;"><b>Country:</b> ${camera.country}</p>
         <p style="margin: 3px 0; font-size: 12px;"><b>Status:</b> <span style="color: ${markerColor};">${camera.status}</span></p>
-        <p style="margin: 3px 0; font-size: 11px;">${camera.latitude.toFixed(4)}, ${camera.longitude.toFixed(4)}</p>
-        <a href="${camera.page_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">🔗 View Camera</a>
+        <p style="margin: 3px 0; font-size: 11px;">${coordinates}</p>
+        <a href="${camera.page_url}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 12px;">🔗 View Full Page</a>
       </div>
     `
   }, [])
 
   // Memoize heat points to avoid recalculation
   const heatPoints = useMemo(() => {
-    return cameras.map(camera => {
-      const intensity = camera.status === 'online' ? 1 : camera.status === 'offline' ? 0.5 : 0.3
-      return [camera.latitude, camera.longitude, intensity] as [number, number, number]
-    })
+    return cameras
+      .filter(camera => camera.latitude !== null && camera.longitude !== null)
+      .map(camera => {
+        const intensity = camera.status === 'online' ? 1 : camera.status === 'offline' ? 0.5 : 0.3
+        return [camera.latitude, camera.longitude, intensity] as [number, number, number]
+      })
   }, [cameras])
 
   useEffect(() => {
@@ -289,7 +306,7 @@ export default function MapComponent({
         break
     }
 
-    L.tileLayer(tileLayerUrl, { 
+    L.tileLayer(tileLayerUrl, {
       attribution,
       maxZoom,
       subdomains: ['a', 'b', 'c']
@@ -319,14 +336,19 @@ export default function MapComponent({
     // Create markers array with efficient infinite wrapping
     const markers: L.Marker[] = []
 
-    cameras.forEach((camera) => {
+    // Filter out cameras with null coordinates
+    const validCameras = cameras.filter(camera =>
+      camera.latitude !== null && camera.longitude !== null
+    )
+
+    validCameras.forEach((camera) => {
       const icon = getCachedIcon(camera.status)
       const popupContent = createPopupContent(camera)
 
       // Create 3 copies of each marker for seamless infinite scrolling (-360°, 0°, +360°)
       for (let offset = -1; offset <= 1; offset++) {
-        const offsetLng = camera.longitude + (offset * 360)
-        const marker = L.marker([camera.latitude, offsetLng], { icon })
+        const offsetLng = camera.longitude! + (offset * 360)
+        const marker = L.marker([camera.latitude!, offsetLng], { icon })
 
         // Bind popup and open on single click
         marker.on('click', () => {
@@ -344,14 +366,14 @@ export default function MapComponent({
           marker.openPopup()
           // Only set view for the original camera (offset 0)
           if (offset === 0) {
-            mapRef.current?.setView([camera.latitude, camera.longitude], 10)
+            mapRef.current?.setView([camera.latitude!, camera.longitude!], 10)
           }
         }
       }
     })
 
     // Add markers based on clustering preference (optimized thresholds)
-    if (showClustering && cameras.length > 50) { // Lower threshold for clustering
+    if (showClustering && validCameras.length > 50) { // Lower threshold for clustering
       // Use clustering for medium+ datasets with optimized settings
       clusterGroupRef.current = (L as any).markerClusterGroup({
         chunkedLoading: true,
@@ -399,7 +421,7 @@ export default function MapComponent({
     }
 
     // Fit map to show all cameras
-    if (cameras.length > 0 && !selectedCamera) {
+    if (validCameras.length > 0 && !selectedCamera) {
       const group = L.featureGroup(markers)
       if (group.getBounds().isValid()) {
         mapRef.current.fitBounds(group.getBounds().pad(0.1))
