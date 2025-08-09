@@ -171,6 +171,7 @@ export default function MapComponent({
   const heatLayerRef = useRef<L.HeatLayer | null>(null)
   const nightLayerRef = useRef<L.LayerGroup | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isMapReady, setIsMapReady] = useState(false)
 
   // Memoize popup content creation to avoid recreating on every render
   const createPopupContent = useCallback((camera: Camera) => {
@@ -218,13 +219,25 @@ export default function MapComponent({
 
     // Initialize map with world wrapping enabled
     if (!mapRef.current) {
-      mapRef.current = L.map(mapContainerRef.current, {
-        worldCopyJump: true, // Enable seamless world wrapping
-        maxBounds: [[-95, -Infinity], [95, Infinity]], // Allow full latitude range for polar cameras
-        maxBoundsViscosity: 0.5, // Resistance when trying to pan beyond vertical bounds
-        minZoom: 1, // Prevent zooming out too far
-        maxZoom: 18 // Set reasonable max zoom
-      }).setView([20, 0], 2)
+      try {
+        mapRef.current = L.map(mapContainerRef.current, {
+          worldCopyJump: true, // Enable seamless world wrapping
+          maxBounds: [[-95, -Infinity], [95, Infinity]], // Allow full latitude range for polar cameras
+          maxBoundsViscosity: 0.5, // Resistance when trying to pan beyond vertical bounds
+          minZoom: 1, // Prevent zooming out too far
+          maxZoom: 18 // Set reasonable max zoom
+        }).setView([20, 0], 2)
+
+        // Wait for map to be fully ready before setting state
+        setTimeout(() => {
+          if (mapRef.current && mapRef.current.getContainer()) {
+            setIsMapReady(true)
+          }
+        }, 100)
+      } catch (error) {
+        console.error('Error initializing map:', error)
+        return
+      }
     }
 
     // Clear existing tile layers
@@ -413,7 +426,7 @@ export default function MapComponent({
     })
 
     // Add markers based on clustering preference (optimized thresholds)
-    if (mapRef.current && markers.length > 0) {
+    if (mapRef.current && isMapReady && markers.length > 0) {
       if (showClustering && validCameras.length > 50) { // Lower threshold for clustering
         // Use clustering for medium+ datasets with optimized settings
         clusterGroupRef.current = (L as any).markerClusterGroup({
@@ -427,59 +440,84 @@ export default function MapComponent({
         })
 
         try {
-          markers.forEach(marker => clusterGroupRef.current!.addLayer(marker))
-          mapRef.current.addLayer(clusterGroupRef.current!)
+          // Add a small delay to ensure map is fully ready
+          setTimeout(() => {
+            if (mapRef.current && clusterGroupRef.current && mapRef.current.getContainer()) {
+              markers.forEach(marker => clusterGroupRef.current!.addLayer(marker))
+              mapRef.current!.addLayer(clusterGroupRef.current!)
+            }
+          }, 50)
         } catch (error) {
           console.warn('Error adding cluster group:', error)
           // Fallback to regular layer group
-          markersRef.current = L.layerGroup(markers)
-          mapRef.current.addLayer(markersRef.current)
+          setTimeout(() => {
+            if (mapRef.current && mapRef.current.getContainer()) {
+              markersRef.current = L.layerGroup(markers)
+              mapRef.current!.addLayer(markersRef.current)
+            }
+          }, 50)
         }
       } else {
         // Use regular layer group for small datasets
-        markersRef.current = L.layerGroup(markers)
-        mapRef.current.addLayer(markersRef.current)
+        setTimeout(() => {
+          if (mapRef.current && mapRef.current.getContainer()) {
+            markersRef.current = L.layerGroup(markers)
+            mapRef.current!.addLayer(markersRef.current)
+          }
+        }, 50)
       }
     }
 
     // Add heatmap if enabled (using memoized heat points)
-    if (mapRef.current && showHeatmap && heatPoints.length > 0) {
+    if (mapRef.current && isMapReady && showHeatmap && heatPoints.length > 0) {
       try {
-        heatLayerRef.current = (L as any).heatLayer(heatPoints, {
-          radius: 20, // Reduced radius for better performance
-          blur: 10,   // Reduced blur for better performance
-          maxZoom: 15, // Lower max zoom to reduce calculations
-          gradient: {
-            0.0: 'blue',
-            0.5: 'lime',
-            0.7: 'yellow',
-            1.0: 'red'
+        setTimeout(() => {
+          if (mapRef.current && mapRef.current.getContainer()) {
+            heatLayerRef.current = (L as any).heatLayer(heatPoints, {
+              radius: 20, // Reduced radius for better performance
+              blur: 10,   // Reduced blur for better performance
+              maxZoom: 15, // Lower max zoom to reduce calculations
+              gradient: {
+                0.0: 'blue',
+                0.5: 'lime',
+                0.7: 'yellow',
+                1.0: 'red'
+              }
+            })
+            mapRef.current!.addLayer(heatLayerRef.current!)
           }
-        })
-        mapRef.current.addLayer(heatLayerRef.current!)
+        }, 75)
       } catch (error) {
         console.warn('Error adding heatmap layer:', error)
       }
     }
 
     // Add day/night overlay if enabled (3 polygons for seamless wrapping)
-    if (mapRef.current && showDayNight) {
+    if (mapRef.current && isMapReady && showDayNight) {
       try {
-        const nightPolygons = createNightPolygons()
-        nightLayerRef.current = L.layerGroup(nightPolygons)
-        mapRef.current.addLayer(nightLayerRef.current!)
+        setTimeout(() => {
+          if (mapRef.current && mapRef.current.getContainer()) {
+            const nightPolygons = createNightPolygons()
+            nightLayerRef.current = L.layerGroup(nightPolygons)
+            mapRef.current!.addLayer(nightLayerRef.current!)
+          }
+        }, 100)
       } catch (error) {
         console.warn('Failed to create day/night overlay:', error)
       }
     }
 
     // Fit map to show all cameras
-    if (mapRef.current && validCameras.length > 0 && !selectedCamera && markers.length > 0) {
+    if (mapRef.current && isMapReady && validCameras.length > 0 && !selectedCamera && markers.length > 0) {
       try {
-        const group = L.featureGroup(markers)
-        if (group.getBounds().isValid()) {
-          mapRef.current.fitBounds(group.getBounds().pad(0.1))
-        }
+        setTimeout(() => {
+          if (mapRef.current && mapRef.current.getContainer()) {
+            const group = L.featureGroup(markers)
+            if (group.getBounds().isValid()) {
+              mapRef.current!.fitBounds(group.getBounds().pad(0.1))
+            }
+          }
+        }, 150)
       } catch (error) {
         console.warn('Error fitting bounds:', error)
       }
@@ -487,12 +525,180 @@ export default function MapComponent({
 
     return () => {
       // Cleanup on unmount
+      setIsMapReady(false)
       if (mapRef.current) {
-        mapRef.current.remove()
-        mapRef.current = null
+        try {
+          mapRef.current.remove()
+          mapRef.current = null
+        } catch (error) {
+          console.warn('Error cleaning up map:', error)
+        }
       }
     }
-  }, [cameras, selectedCamera, mapLayer, showClustering, showHeatmap, showDayNight])
+  }, [mapLayer])
+
+  // Separate effect for managing layers - only runs when map is ready
+  useEffect(() => {
+    if (!mapRef.current || !isMapReady) return
+
+    // Clear existing layers
+    if (markersRef.current) {
+      mapRef.current.removeLayer(markersRef.current)
+      markersRef.current = null
+    }
+    if (clusterGroupRef.current) {
+      mapRef.current.removeLayer(clusterGroupRef.current)
+      clusterGroupRef.current = null
+    }
+    if (heatLayerRef.current) {
+      mapRef.current.removeLayer(heatLayerRef.current)
+      heatLayerRef.current = null
+    }
+    if (nightLayerRef.current) {
+      mapRef.current.removeLayer(nightLayerRef.current)
+      nightLayerRef.current = null
+    }
+
+    // Create markers array with efficient infinite wrapping
+    const markers: L.Marker[] = []
+
+    // Filter out cameras with null coordinates
+    const validCameras = cameras.filter(camera =>
+      camera.latitude !== null && camera.longitude !== null
+    )
+
+    validCameras.forEach((camera) => {
+      const icon = getCachedIcon(camera.status)
+      const popupContent = createPopupContent(camera)
+      const markerColor = camera.status === 'online' ? 'green' :
+        camera.status === 'offline' ? 'red' : 'gray'
+
+      // Create 3 copies of each marker for seamless infinite scrolling (-360°, 0°, +360°)
+      for (let offset = -1; offset <= 1; offset++) {
+        const offsetLng = camera.longitude! + (offset * 360)
+        const marker = L.marker([camera.latitude!, offsetLng], { icon })
+
+        // Bind popup and open on single click
+        marker.bindPopup(popupContent)
+        marker.on('click', () => {
+          marker.openPopup()
+        })
+
+        markers.push(marker)
+
+        // Highlight selected camera (all copies)
+        if (selectedCamera === camera.id) {
+          marker.bindPopup(popupContent)
+          marker.openPopup()
+
+          // Add pulsing animation for selected camera
+          const pulsingIcon = L.divIcon({
+            className: 'custom-camera-marker pulsing-marker',
+            html: `
+              <div style="
+                width: 12px; 
+                height: 12px; 
+                background-color: ${markerColor}; 
+                border: 1px solid white; 
+                border-radius: 50%; 
+                box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                animation: pulse 1s ease-in-out 3;
+              "></div>
+              <style>
+                @keyframes pulse {
+                  0% { transform: scale(1); opacity: 1; }
+                  50% { transform: scale(1.8); opacity: 0.7; }
+                  100% { transform: scale(1); opacity: 1; }
+                }
+              </style>
+            `,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+          })
+
+          marker.setIcon(pulsingIcon)
+
+          // Only set view for the original camera (offset 0)
+          if (offset === 0) {
+            mapRef.current?.setView([camera.latitude!, camera.longitude!], 10)
+          }
+        }
+      }
+    })
+
+    // Add markers with delay to ensure map is ready
+    setTimeout(() => {
+      if (!mapRef.current || !mapRef.current.getContainer()) return
+
+      if (showClustering && validCameras.length > 50) {
+        try {
+          clusterGroupRef.current = (L as any).markerClusterGroup({
+            chunkedLoading: true,
+            maxClusterRadius: 40,
+            spiderfyOnMaxZoom: false,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            disableClusteringAtZoom: 12,
+            animate: false
+          })
+
+          markers.forEach(marker => clusterGroupRef.current!.addLayer(marker))
+          mapRef.current!.addLayer(clusterGroupRef.current!)
+        } catch (error) {
+          console.warn('Error adding cluster group:', error)
+          markersRef.current = L.layerGroup(markers)
+          mapRef.current!.addLayer(markersRef.current)
+        }
+      } else if (markers.length > 0) {
+        markersRef.current = L.layerGroup(markers)
+        mapRef.current!.addLayer(markersRef.current)
+      }
+
+      // Add heatmap
+      if (showHeatmap && heatPoints.length > 0) {
+        try {
+          heatLayerRef.current = (L as any).heatLayer(heatPoints, {
+            radius: 20,
+            blur: 10,
+            maxZoom: 15,
+            gradient: {
+              0.0: 'blue',
+              0.5: 'lime',
+              0.7: 'yellow',
+              1.0: 'red'
+            }
+          })
+          mapRef.current!.addLayer(heatLayerRef.current!)
+        } catch (error) {
+          console.warn('Error adding heatmap layer:', error)
+        }
+      }
+
+      // Add day/night overlay
+      if (showDayNight) {
+        try {
+          const nightPolygons = createNightPolygons()
+          nightLayerRef.current = L.layerGroup(nightPolygons)
+          mapRef.current!.addLayer(nightLayerRef.current!)
+        } catch (error) {
+          console.warn('Failed to create day/night overlay:', error)
+        }
+      }
+
+      // Fit bounds
+      if (validCameras.length > 0 && !selectedCamera && markers.length > 0) {
+        try {
+          const group = L.featureGroup(markers)
+          if (group.getBounds().isValid()) {
+            mapRef.current!.fitBounds(group.getBounds().pad(0.1))
+          }
+        } catch (error) {
+          console.warn('Error fitting bounds:', error)
+        }
+      }
+    }, 200) // Increased delay
+
+  }, [cameras, selectedCamera, showClustering, showHeatmap, showDayNight, isMapReady, heatPoints, createPopupContent])
 
   // Fullscreen functionality
   const toggleFullscreen = useCallback(() => {
@@ -560,6 +766,16 @@ export default function MapComponent({
       className={`relative w-full h-full ${isFullscreen ? 'bg-black' : ''}`}
     >
       <div ref={mapContainerRef} className="w-full h-full" />
+
+      {/* Loading overlay while map initializes */}
+      {!isMapReady && (
+        <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-[999]">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+            <p className="text-sm">Loading map...</p>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Dashboard Controls */}
       {isFullscreen && (
