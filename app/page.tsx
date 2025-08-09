@@ -727,7 +727,19 @@ export default function CameraMonitoringDashboard() {
               <Card className="bg-slate-900/50 border-red-500/20 backdrop-blur-sm">
                 <CardHeader className="pb-4">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-white">Global Network Map</CardTitle>
+                    <div className="flex items-center space-x-4">
+                      <CardTitle className="text-white">Global Network Map</CardTitle>
+                      {/* Search Bar */}
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <Input
+                          placeholder="Search cameras..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-10 w-48 bg-slate-800 border-slate-700 text-white placeholder-slate-400"
+                        />
+                      </div>
+                    </div>
                     <div className="flex items-center space-x-4">
                       <div className="flex items-center space-x-2">
                         <Label className="text-sm text-slate-300">Map Style:</Label>
@@ -811,10 +823,12 @@ export default function CameraMonitoringDashboard() {
                       showClustering={showClustering}
                       showHeatmap={showHeatmap}
                       showDayNight={showDayNight}
+                      searchTerm={searchTerm}
                       onMapLayerChange={setMapLayer}
                       onClusteringChange={setShowClustering}
                       onHeatmapChange={setShowHeatmap}
                       onDayNightChange={setShowDayNight}
+                      onSearchChange={setSearchTerm}
                     />
                   </div>
                 </CardContent>

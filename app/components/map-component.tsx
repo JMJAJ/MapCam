@@ -7,7 +7,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import 'leaflet.markercluster'
 import 'leaflet.heat'
-import { Maximize, Minimize } from 'lucide-react'
+import { Maximize, Minimize, Search } from 'lucide-react'
 
 // Fix for default markers in Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -39,10 +39,12 @@ interface MapComponentProps {
   showClustering?: boolean
   showHeatmap?: boolean
   showDayNight?: boolean
+  searchTerm?: string
   onMapLayerChange?: (layer: string) => void
   onClusteringChange?: (enabled: boolean) => void
   onHeatmapChange?: (enabled: boolean) => void
   onDayNightChange?: (enabled: boolean) => void
+  onSearchChange?: (term: string) => void
 }
 
 // Cache for icons to avoid recreating them
@@ -154,10 +156,12 @@ export default function MapComponent({
   showClustering = true,
   showHeatmap = false,
   showDayNight = false,
+  searchTerm = '',
   onMapLayerChange,
   onClusteringChange,
   onHeatmapChange,
-  onDayNightChange
+  onDayNightChange,
+  onSearchChange
 }: MapComponentProps) {
   const mapRef = useRef<L.Map | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -561,6 +565,21 @@ export default function MapComponent({
       {isFullscreen && (
         <div className="absolute top-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur-sm rounded-lg p-4 shadow-lg border border-slate-700 max-w-sm">
           <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white">Search Cameras</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search cameras..."
+                  value={searchTerm}
+                  onChange={(e) => onSearchChange?.(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 bg-slate-800 border border-slate-600 rounded text-white text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
             {/* Map Layer Selector */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-white">Map Style</label>
