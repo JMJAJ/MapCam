@@ -208,19 +208,79 @@ export default function MapComponent({
     // Add appropriate tile layer based on mapLayer prop
     let tileLayerUrl = ''
     let attribution = ''
+    let maxZoom = 18
 
     switch (mapLayer) {
       case 'satellite':
         tileLayerUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
         attribution = '© Esri, Maxar, Earthstar Geographics'
+        maxZoom = 19
         break
       case 'dark':
         tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         attribution = '© OpenStreetMap contributors, © CARTO'
         break
-      case 'earth':
+      case 'google-earth':
         tileLayerUrl = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
         attribution = '© Google Earth'
+        maxZoom = 20
+        break
+      case 'google-hybrid':
+        tileLayerUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+        attribution = '© Google Maps'
+        maxZoom = 20
+        break
+      case 'google-terrain':
+        tileLayerUrl = 'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}'
+        attribution = '© Google Maps'
+        maxZoom = 16
+        break
+      case 'google-streets':
+        tileLayerUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+        attribution = '© Google Maps'
+        maxZoom = 20
+        break
+      case 'esri-world-topo':
+        tileLayerUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
+        attribution = '© Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+        maxZoom = 19
+        break
+      case 'esri-world-street':
+        tileLayerUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+        attribution = '© Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+        maxZoom = 19
+        break
+      case 'esri-world-physical':
+        tileLayerUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}'
+        attribution = '© Esri, US National Park Service'
+        maxZoom = 8
+        break
+      case 'carto-light':
+        tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+        attribution = '© OpenStreetMap contributors, © CARTO'
+        break
+      case 'carto-voyager':
+        tileLayerUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+        attribution = '© OpenStreetMap contributors, © CARTO'
+        break
+      case 'opentopomap':
+        tileLayerUrl = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+        attribution = '© OpenStreetMap contributors, © OpenTopoMap (CC-BY-SA)'
+        maxZoom = 17
+        break
+      case 'stamen-terrain':
+        tileLayerUrl = 'https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg'
+        attribution = '© Stamen Design, © OpenStreetMap contributors'
+        maxZoom = 16
+        break
+      case 'stamen-watercolor':
+        tileLayerUrl = 'https://stamen-tiles-{s}.a.ssl.fastly.net/watercolor/{z}/{x}/{y}.jpg'
+        attribution = '© Stamen Design, © OpenStreetMap contributors'
+        maxZoom = 16
+        break
+      case 'wikimedia':
+        tileLayerUrl = 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png'
+        attribution = '© OpenStreetMap contributors, © Wikimedia maps'
         break
       case 'street':
       default:
@@ -229,7 +289,14 @@ export default function MapComponent({
         break
     }
 
-    L.tileLayer(tileLayerUrl, { attribution }).addTo(mapRef.current)
+    L.tileLayer(tileLayerUrl, { 
+      attribution,
+      maxZoom,
+      subdomains: ['a', 'b', 'c']
+    }).addTo(mapRef.current)
+
+    // Update map max zoom
+    mapRef.current.setMaxZoom(maxZoom)
 
     // Clear existing layers
     if (markersRef.current) {
