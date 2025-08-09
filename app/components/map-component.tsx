@@ -39,6 +39,10 @@ interface MapComponentProps {
   showClustering?: boolean
   showHeatmap?: boolean
   showDayNight?: boolean
+  onMapLayerChange?: (layer: string) => void
+  onClusteringChange?: (enabled: boolean) => void
+  onHeatmapChange?: (enabled: boolean) => void
+  onDayNightChange?: (enabled: boolean) => void
 }
 
 // Cache for icons to avoid recreating them
@@ -149,7 +153,11 @@ export default function MapComponent({
   mapLayer = 'street',
   showClustering = true,
   showHeatmap = false,
-  showDayNight = false
+  showDayNight = false,
+  onMapLayerChange,
+  onClusteringChange,
+  onHeatmapChange,
+  onDayNightChange
 }: MapComponentProps) {
   const mapRef = useRef<L.Map | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -344,6 +352,8 @@ export default function MapComponent({
     validCameras.forEach((camera) => {
       const icon = getCachedIcon(camera.status)
       const popupContent = createPopupContent(camera)
+      const markerColor = camera.status === 'online' ? 'green' :
+        camera.status === 'offline' ? 'red' : 'gray'
 
       // Create 3 copies of each marker for seamless infinite scrolling (-360°, 0°, +360°)
       for (let offset = -1; offset <= 1; offset++) {
@@ -351,10 +361,8 @@ export default function MapComponent({
         const marker = L.marker([camera.latitude!, offsetLng], { icon })
 
         // Bind popup and open on single click
+        marker.bindPopup(popupContent)
         marker.on('click', () => {
-          if (!marker.getPopup()) {
-            marker.bindPopup(popupContent)
-          }
           marker.openPopup()
         })
 
@@ -364,6 +372,34 @@ export default function MapComponent({
         if (selectedCamera === camera.id) {
           marker.bindPopup(popupContent)
           marker.openPopup()
+
+          // Add pulsing animation for selected camera
+          const pulsingIcon = L.divIcon({
+            className: 'custom-camera-marker pulsing-marker',
+            html: `
+              <div style="
+                width: 12px; 
+                height: 12px; 
+                background-color: ${markerColor}; 
+                border: 1px solid white; 
+                border-radius: 50%; 
+                box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                animation: pulse 1s ease-in-out 3;
+              "></div>
+              <style>
+                @keyframes pulse {
+                  0% { transform: scale(1); opacity: 1; }
+                  50% { transform: scale(1.8); opacity: 0.7; }
+                  100% { transform: scale(1); opacity: 1; }
+                }
+              </style>
+            `,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+          })
+
+          marker.setIcon(pulsingIcon)
+
           // Only set view for the original camera (offset 0)
           if (offset === 0) {
             mapRef.current?.setView([camera.latitude!, camera.longitude!], 10)
@@ -373,44 +409,57 @@ export default function MapComponent({
     })
 
     // Add markers based on clustering preference (optimized thresholds)
-    if (showClustering && validCameras.length > 50) { // Lower threshold for clustering
-      // Use clustering for medium+ datasets with optimized settings
-      clusterGroupRef.current = (L as any).markerClusterGroup({
-        chunkedLoading: true,
-        maxClusterRadius: 40, // Smaller radius for better performance
-        spiderfyOnMaxZoom: false, // Disable spiderfy for performance
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        disableClusteringAtZoom: 12, // Disable clustering at high zoom for performance
-        animate: false // Disable animations for better performance
-      })
+    if (mapRef.current && markers.length > 0) {
+      if (showClustering && validCameras.length > 50) { // Lower threshold for clustering
+        // Use clustering for medium+ datasets with optimized settings
+        clusterGroupRef.current = (L as any).markerClusterGroup({
+          chunkedLoading: true,
+          maxClusterRadius: 40, // Smaller radius for better performance
+          spiderfyOnMaxZoom: false, // Disable spiderfy for performance
+          showCoverageOnHover: false,
+          zoomToBoundsOnClick: true,
+          disableClusteringAtZoom: 12, // Disable clustering at high zoom for performance
+          animate: false // Disable animations for better performance
+        })
 
-      markers.forEach(marker => clusterGroupRef.current!.addLayer(marker))
-      mapRef.current.addLayer(clusterGroupRef.current!)
-    } else {
-      // Use regular layer group for small datasets
-      markersRef.current = L.layerGroup(markers)
-      mapRef.current.addLayer(markersRef.current)
+        try {
+          markers.forEach(marker => clusterGroupRef.current!.addLayer(marker))
+          mapRef.current.addLayer(clusterGroupRef.current!)
+        } catch (error) {
+          console.warn('Error adding cluster group:', error)
+          // Fallback to regular layer group
+          markersRef.current = L.layerGroup(markers)
+          mapRef.current.addLayer(markersRef.current)
+        }
+      } else {
+        // Use regular layer group for small datasets
+        markersRef.current = L.layerGroup(markers)
+        mapRef.current.addLayer(markersRef.current)
+      }
     }
 
     // Add heatmap if enabled (using memoized heat points)
-    if (showHeatmap && heatPoints.length > 0) {
-      heatLayerRef.current = (L as any).heatLayer(heatPoints, {
-        radius: 20, // Reduced radius for better performance
-        blur: 10,   // Reduced blur for better performance
-        maxZoom: 15, // Lower max zoom to reduce calculations
-        gradient: {
-          0.0: 'blue',
-          0.5: 'lime',
-          0.7: 'yellow',
-          1.0: 'red'
-        }
-      })
-      mapRef.current.addLayer(heatLayerRef.current!)
+    if (mapRef.current && showHeatmap && heatPoints.length > 0) {
+      try {
+        heatLayerRef.current = (L as any).heatLayer(heatPoints, {
+          radius: 20, // Reduced radius for better performance
+          blur: 10,   // Reduced blur for better performance
+          maxZoom: 15, // Lower max zoom to reduce calculations
+          gradient: {
+            0.0: 'blue',
+            0.5: 'lime',
+            0.7: 'yellow',
+            1.0: 'red'
+          }
+        })
+        mapRef.current.addLayer(heatLayerRef.current!)
+      } catch (error) {
+        console.warn('Error adding heatmap layer:', error)
+      }
     }
 
     // Add day/night overlay if enabled (3 polygons for seamless wrapping)
-    if (showDayNight) {
+    if (mapRef.current && showDayNight) {
       try {
         const nightPolygons = createNightPolygons()
         nightLayerRef.current = L.layerGroup(nightPolygons)
@@ -421,10 +470,14 @@ export default function MapComponent({
     }
 
     // Fit map to show all cameras
-    if (validCameras.length > 0 && !selectedCamera) {
-      const group = L.featureGroup(markers)
-      if (group.getBounds().isValid()) {
-        mapRef.current.fitBounds(group.getBounds().pad(0.1))
+    if (mapRef.current && validCameras.length > 0 && !selectedCamera && markers.length > 0) {
+      try {
+        const group = L.featureGroup(markers)
+        if (group.getBounds().isValid()) {
+          mapRef.current.fitBounds(group.getBounds().pad(0.1))
+        }
+      } catch (error) {
+        console.warn('Error fitting bounds:', error)
       }
     }
 
@@ -475,8 +528,14 @@ export default function MapComponent({
       // Invalidate map size when entering/exiting fullscreen
       if (mapRef.current) {
         setTimeout(() => {
-          mapRef.current?.invalidateSize()
-        }, 100)
+          if (mapRef.current) {
+            try {
+              mapRef.current.invalidateSize()
+            } catch (error) {
+              console.warn('Error invalidating map size:', error)
+            }
+          }
+        }, 200) // Increased delay to ensure DOM is ready
       }
     }
 
@@ -497,6 +556,85 @@ export default function MapComponent({
       className={`relative w-full h-full ${isFullscreen ? 'bg-black' : ''}`}
     >
       <div ref={mapContainerRef} className="w-full h-full" />
+
+      {/* Fullscreen Dashboard Controls */}
+      {isFullscreen && (
+        <div className="absolute top-4 left-4 z-[1000] bg-slate-900/90 backdrop-blur-sm rounded-lg p-4 shadow-lg border border-slate-700 max-w-sm">
+          <div className="space-y-4">
+            {/* Map Layer Selector */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white">Map Style</label>
+              <select
+                value={mapLayer}
+                onChange={(e) => onMapLayerChange?.(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <optgroup label="Standard">
+                  <option value="street">🗺️ OpenStreetMap</option>
+                  <option value="dark">🌙 Dark Theme</option>
+                  <option value="carto-light">☀️ CartoDB Light</option>
+                  <option value="carto-voyager">🧭 CartoDB Voyager</option>
+                </optgroup>
+                <optgroup label="Google Maps">
+                  <option value="google-earth">🌍 Google Earth</option>
+                  <option value="google-hybrid">🛰️ Google Hybrid</option>
+                  <option value="google-terrain">🏔️ Google Terrain</option>
+                  <option value="google-streets">🛣️ Google Streets</option>
+                </optgroup>
+                <optgroup label="Satellite">
+                  <option value="satellite">📡 Esri Satellite</option>
+                  <option value="esri-world-topo">🗻 Esri Topographic</option>
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Toggle Controls */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white">Clustering</label>
+                <button
+                  onClick={() => onClusteringChange?.(!showClustering)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showClustering ? 'bg-blue-600' : 'bg-slate-600'
+                    }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showClustering ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white">Heatmap</label>
+                <button
+                  onClick={() => onHeatmapChange?.(!showHeatmap)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showHeatmap ? 'bg-red-600' : 'bg-slate-600'
+                    }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showHeatmap ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-white">Day/Night</label>
+                <button
+                  onClick={() => onDayNightChange?.(!showDayNight)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showDayNight ? 'bg-purple-600' : 'bg-slate-600'
+                    }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showDayNight ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Toggle Button */}
       <button

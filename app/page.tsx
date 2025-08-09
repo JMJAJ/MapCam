@@ -281,7 +281,7 @@ export default function CameraMonitoringDashboard() {
         c.city.toLowerCase().includes(term) ||
         c.country.toLowerCase().includes(term) ||
         c.region.toLowerCase().includes(term) ||
-        c.manufacturer.toLowerCase().includes(term)
+        (c.manufacturer && c.manufacturer.toLowerCase().includes(term))
       )
     }
 
@@ -811,6 +811,10 @@ export default function CameraMonitoringDashboard() {
                       showClustering={showClustering}
                       showHeatmap={showHeatmap}
                       showDayNight={showDayNight}
+                      onMapLayerChange={setMapLayer}
+                      onClusteringChange={setShowClustering}
+                      onHeatmapChange={setShowHeatmap}
+                      onDayNightChange={setShowDayNight}
                     />
                   </div>
                 </CardContent>
